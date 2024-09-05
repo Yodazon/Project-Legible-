@@ -48,39 +48,57 @@ def main():
       return
     
 
-    print("Emails:")
-    email_dict = {}
-
-    for idx,msg in enumerate(messages):
-      #Get messgae details
+    sender_dict = {}
+    for msg in messages:
       msg_detail = service.users().messages().get(userId = "me", id=msg["id"]).execute()
-      email_dict[idx] = msg_detail['id']
-
-      #Display subject/snippet to user
       headers = msg_detail["payload"]["headers"]
-      subject = next(header['value'] for header in headers if header['name'] == 'Subject')
-      print(f"{idx}: {subject}")
+      sender = next((header['value'] for header in headers if header['name'] == 'From'), 'Unknown Sender')
+      sender_email = sender.split()[-1].strip('<>')
 
-    #Ask users to pick emails by index
-    selected_indices = input("Enter the email indices (comma-separated) you want to read: ").split(',')
-    selected_indices = [int(index.strip()) for index in selected_indices]
+      if sender_email not in sender_dict:
+        sender_dict[sender_email] = []
+      sender_dict[sender_email].append(msg_detail)
+
+    print("Senders")
+    for sender_email in sender_dict:
+      print(sender_email)
+
+
+    while True:
+      selected_sender = input("Which sender's email would you like to read?: ").strip()
+      if selected_sender in sender_dict:
+        break
+      else:
+        print("Sender not found")
     
-    for index in selected_indices:
-      msg_id = email_dict[index]
-      msg_detail = service.users().messages().get(userId="me", id=msg_id).execute()
-      msg_body = get_msg_body(msg_detail)
-      print(f"\nEmail {index} Body:\n{msg_body}")
+    selected_emails = sender_dict[selected_sender][:5]
+    for idx, email in enumerate(selected_emails):
+      subject = next((header['value'] for header in email['payload']['headers'] if header['name'] == 'Subject'), 'No Subject')
+      print(f"\nEmail {idx + 1} Subject: {subject}")
+      msg_body = get_msg_body(email)
+      print(f"Email {idx + 1} Body:\n{msg_body}")
+
+  
+   
 
   except HttpError as error:
     # TODO(developer) - Handle errors from gmail API.
     print(f"An error occurred: {error}")
 
 def get_msg_body(message):
-  "Extract Body from Email"
+  "Extracts the body from the Gmail message."
   parts = message['payload'].get('parts')
   if parts:
-    body = parts[0]['body']['data']
-    return base64.urlsafe_b64decode(body).decode('utf-8')
+      for part in parts:
+          if part['mimeType'] == 'text/plain':  # For plain text emails
+              body = part['body']['data']
+              return base64.urlsafe_b64decode(body).decode('utf-8')
+          elif part['mimeType'] == 'text/html':  # For HTML emails 
+              body = part['body']['data']
+              return base64.urlsafe_b64decode(body).decode('utf-8')
+  else:
+      body = message['payload']['body']['data']
+      return base64.urlsafe_b64decode(body).decode('utf-8')
 
 
 
