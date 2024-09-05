@@ -4,3 +4,5 @@ python/credentials.json
 *.env
 python_practice/credentials.json
 python_practice/token.json
+token.json
+app/credentials.json
