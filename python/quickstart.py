@@ -1,5 +1,5 @@
 import os.path
-
+import base64
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -48,15 +48,41 @@ def main():
       return
     
 
-    print("Messages:")
-    for msg in messages:
-      msg = service.users().messages().get(userId="me", id=msg["id"]).execute()
+    print("Emails:")
+    email_dict = {}
 
-      print(msg["snippet"])
+    for idx,msg in enumerate(messages):
+      #Get messgae details
+      msg_detail = service.users().messages().get(userId = "me", id=msg["id"]).execute()
+      email_dict[idx] = msg_detail['id']
+
+      #Display subject/snippet to user
+      headers = msg_detail["payload"]["headers"]
+      subject = next(header['value'] for header in headers if header['name'] == 'Subject')
+      print(f"{idx}: {subject}")
+
+    #Ask users to pick emails by index
+    selected_indices = input("Enter the email indices (comma-separated) you want to read: ").split(',')
+    selected_indices = [int(index.strip()) for index in selected_indices]
+    
+    for index in selected_indices:
+      msg_id = email_dict[index]
+      msg_detail = service.users().messages().get(userId="me", id=msg_id).execute()
+      msg_body = get_msg_body(msg_detail)
+      print(f"\nEmail {index} Body:\n{msg_body}")
 
   except HttpError as error:
     # TODO(developer) - Handle errors from gmail API.
     print(f"An error occurred: {error}")
+
+def get_msg_body(message):
+  "Extract Body from Email"
+  parts = message['payload'].get('parts')
+  if parts:
+    body = parts[0]['body']['data']
+    return base64.urlsafe_b64decode(body).decode('utf-8')
+
+
 
 
 if __name__ == "__main__":
