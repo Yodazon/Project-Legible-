@@ -1,3 +1,6 @@
 env.js
 python/key.env
 python/credentials.json
+*.env
+python_practice/credentials.json
+python_practice/token.json
