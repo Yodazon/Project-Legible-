@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Email Viewer</title>
-    <!--<script src="https://cdn.tailwindcss.com"></script>--> 
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@latest/dist/tailwind.min.css" rel="stylesheet">
-
 </head>
 <body class="bg-gray-100 text-gray-800">
 
@@ -22,8 +20,8 @@
 
     <button onclick="fetchEmails()" class="bg-blue-500 text-white px-4 py-2 rounded">View Emails</button>
 
-    <div id="email-list" class="mt-6">
-        <!-- Email content will be displayed here -->
+    <div id="email-list" class="mt-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <!-- Email content will be displayed here in a grid -->
     </div>
 </div>
 
@@ -57,7 +55,7 @@
             emailList.innerHTML = "";  // Clear any existing content
             emails.forEach((email, index) => {
                 const emailDiv = document.createElement("div");
-                emailDiv.className = "mb-4 p-4 bg-white shadow rounded";
+                emailDiv.className = "p-4 bg-white shadow rounded";
                 emailDiv.innerHTML = `
                     <h2 class="font-bold text-lg">Email ${index + 1} Subject: ${email.subject}</h2>
                     <p class="mt-2">${email.body}</p>

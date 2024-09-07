@@ -87,9 +87,12 @@ def get_message_body(message):
             elif part['mimeType'] == 'text/html':  # For HTML emails
                 body = part['body']['data']
                 return base64.urlsafe_b64decode(body).decode('utf-8')
+        print(parts['mimeType'])
     else:
         body = message['payload']['body']['data']
+        print("There are no parts")
         return base64.urlsafe_b64decode(body).decode('utf-8')
+        
 
 if __name__ == '__main__':
     app.run(debug=True)
