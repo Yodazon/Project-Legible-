@@ -1,14 +1,16 @@
 # app.py
 
-import os.path
-import base64
-from flask import Flask, jsonify, request
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-from dotenv import load_dotenv
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+from dotenv import load_dotenv
+import os
+import base64
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +37,32 @@ def get_gmail_service():
             token.write(creds.to_json())
     return build("gmail", "v1", credentials=creds)
 
+def get_email_body(msg):
+    """Extract and render email body, including content loaded by JavaScript."""
+    for part in msg['payload']['parts']:
+        if part['mimeType'] == 'text/html':
+            html_content = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+            return render_html_with_selenium(html_content)
+    return "No HTML content found."
+
+def render_html_with_selenium(html_content):
+    """Render HTML content with Selenium to allow JavaScript execution."""
+    service = Service(executable_path= os.getenv('CHROMEDRIVER_PATH'))
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')
+    driver = webdriver.Chrome(service=service, options=options)
+    
+    driver.get("data:text/html;charset=utf-8," + html_content)
+    
+    driver.implicitly_wait(10)
+    
+    rendered_html = driver.page_source
+    
+    driver.quit()
+    
+    return rendered_html
+
+
 @app.route('/senders', methods=['GET'])
 def get_senders():
     """Returns a list of senders based on the recent emails."""
@@ -52,29 +80,24 @@ def get_senders():
         sender_dict[sender_email].append(msg_detail)
     return jsonify(list(sender_dict.keys()))
 
+
 @app.route('/emails', methods=['POST'])
 def get_emails():
-    """Returns the 5 most recent emails from a selected sender."""
+    data = request.get_json()
+    sender = data.get('sender')
+    
     service = get_gmail_service()
-    sender = request.json.get('sender')
-    results = service.users().messages().list(userId="me", maxResults=50).execute()
-    messages = results.get("messages", [])
-    sender_dict = {}
+    results = service.users().messages().list(userId="me", q=f"from:{sender}", maxResults=5).execute()
+    messages = results.get('messages', [])
+    
+    emails = []
     for msg in messages:
-        msg_detail = service.users().messages().get(userId="me", id=msg["id"]).execute()
-        headers = msg_detail["payload"]["headers"]
-        email_sender = next((header['value'] for header in headers if header['name'] == 'From'), 'Unknown Sender')
-        sender_email = email_sender.split()[-1].strip('<>')
-        if sender_email not in sender_dict:
-            sender_dict[sender_email] = []
-        sender_dict[sender_email].append(msg_detail)
-    if sender in sender_dict:
-        emails = sender_dict[sender][:5]
-        email_data = [{"subject": next((header['value'] for header in email['payload']['headers'] if header['name'] == 'Subject'), 'No Subject'),
-                       "body": get_message_body(email)} for email in emails]
-        return jsonify(email_data)
-    else:
-        return jsonify([])
+        msg_detail = service.users().messages().get(userId="me", id=msg['id']).execute()
+        subject = next(header['value'] for header in msg_detail['payload']['headers'] if header['name'] == 'Subject')
+        body = get_email_body(msg_detail)
+        emails.append({'subject': subject, 'body': body})
+    
+    return jsonify(emails)
 
 def get_message_body(message):
     """Extracts the body from the Gmail message."""
@@ -87,10 +110,9 @@ def get_message_body(message):
             elif part['mimeType'] == 'text/html':  # For HTML emails
                 body = part['body']['data']
                 return base64.urlsafe_b64decode(body).decode('utf-8')
-        print(parts['mimeType'])
     else:
         body = message['payload']['body']['data']
-        print("There are no parts")
+
         return base64.urlsafe_b64decode(body).decode('utf-8')
         
 
