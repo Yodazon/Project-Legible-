@@ -1,5 +1,3 @@
-# app.py
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from selenium import webdriver
@@ -11,6 +9,7 @@ from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 import os
 import base64
+import datetime
 
 # Load environment variables
 load_dotenv()
@@ -37,13 +36,35 @@ def get_gmail_service():
             token.write(creds.to_json())
     return build("gmail", "v1", credentials=creds)
 
+import re
+import base64
+
 def get_email_body(msg):
     """Extract and render email body, including content loaded by JavaScript."""
-    for part in msg['payload']['parts']:
-        if part['mimeType'] == 'text/html':
-            html_content = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
-            return render_html_with_selenium(html_content)
-    return "No HTML content found."
+    if 'parts' in msg['payload']:
+        for part in msg['payload']['parts']:
+            if part['mimeType'] == 'text/html':
+                if 'data' in part['body']:
+                    html_content = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                    rendered_content = render_html_with_selenium(html_content)
+                    return process_links(rendered_content)
+                elif 'parts' in part:  # Nested parts
+                    return get_email_body({'payload': part})
+            elif part['mimeType'] == 'text/plain':
+                if 'data' in part['body']:
+                    return base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+    else:
+        if msg['payload']['mimeType'] == 'text/html':
+            if 'data' in msg['payload']['body']:
+                html_content = base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
+                rendered_content = render_html_with_selenium(html_content)
+                return process_links(rendered_content)
+        elif msg['payload']['mimeType'] == 'text/plain':
+            if 'data' in msg['payload']['body']:
+                return base64.urlsafe_b64decode(msg['payload']['body']['data']).decode('utf-8')
+    
+    return "No content found."
+
 
 def render_html_with_selenium(html_content):
     """Render HTML content with Selenium to allow JavaScript execution."""
@@ -63,6 +84,11 @@ def render_html_with_selenium(html_content):
     return rendered_html
 
 
+def process_links(html_content):
+    """Replace hyperlinks with 'click here' text."""
+    return re.sub(r'<a[^>]+href="([^"]+)"[^>]*>.*?</a>', r'<a href="\1">click here</a>', html_content)
+
+
 @app.route('/senders', methods=['GET'])
 def get_senders():
     """Returns a list of senders based on the recent emails."""
@@ -80,41 +106,42 @@ def get_senders():
         sender_dict[sender_email].append(msg_detail)
     return jsonify(list(sender_dict.keys()))
 
-
 @app.route('/emails', methods=['POST'])
 def get_emails():
     data = request.get_json()
-    sender = data.get('sender')
+    senders = data.get('senders', [])
     
     service = get_gmail_service()
-    results = service.users().messages().list(userId="me", q=f"from:{sender}", maxResults=5).execute()
-    messages = results.get('messages', [])
-    
-    emails = []
-    for msg in messages:
-        msg_detail = service.users().messages().get(userId="me", id=msg['id']).execute()
-        subject = next(header['value'] for header in msg_detail['payload']['headers'] if header['name'] == 'Subject')
-        body = get_email_body(msg_detail)
-        emails.append({'subject': subject, 'body': body})
-    
-    return jsonify(emails)
+    all_emails = []
 
-def get_message_body(message):
-    """Extracts the body from the Gmail message."""
-    parts = message['payload'].get('parts')
-    if parts:
-        for part in parts:
-            if part['mimeType'] == 'text/plain':  # For plain text emails
-                body = part['body']['data']
-                return base64.urlsafe_b64decode(body).decode('utf-8')
-            elif part['mimeType'] == 'text/html':  # For HTML emails
-                body = part['body']['data']
-                return base64.urlsafe_b64decode(body).decode('utf-8')
-    else:
-        body = message['payload']['body']['data']
-
-        return base64.urlsafe_b64decode(body).decode('utf-8')
+    for sender in senders:
+        results = service.users().messages().list(userId="me", q=f"from:{sender}", maxResults=5).execute()
+        messages = results.get('messages', [])
         
+        for msg in messages:
+            msg_detail = service.users().messages().get(userId="me", id=msg['id']).execute()
+            subject = next(header['value'] for header in msg_detail['payload']['headers'] if header['name'] == 'Subject')
+
+
+            # Retrieve the date from the correct header
+            date_str = next(header['value'] for header in msg_detail['payload']['headers'] if header['name'] == 'Date')
+
+            # Clean up the date string by removing '(UTC)' if it exists
+            date_str = date_str.replace(' (UTC)', '')
+
+            body = get_email_body(msg_detail)
+            date = datetime.datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %z')
+            all_emails.append({'subject': subject, 'body': body, 'date': date})
+    
+    # Sort emails by date
+    sorted_emails = sorted(all_emails, key=lambda x: x['date'], reverse=True)
+    
+    # Remove date before returning
+    for email in sorted_emails:
+        email.pop('date')
+
+    return jsonify(sorted_emails)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
