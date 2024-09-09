@@ -12,8 +12,8 @@
     <h1 class="text-3xl font-bold mb-4">Email Viewer</h1>
 
     <div>
-        <label for="sender" class="block mb-2 font-medium">Select a Sender:</label>
-        <select id="sender" class="block w-full p-2 border border-gray-300 rounded mb-4">
+        <label for="senders" class="block mb-2 font-medium">Select Senders:</label>
+        <select id="senders" multiple class="block w-full p-2 border border-gray-300 rounded mb-4">
             <!-- Options will be populated by JavaScript -->
         </select>
     </div>
@@ -30,24 +30,24 @@
         fetch("http://127.0.0.1:5000/senders")
             .then(response => response.json())
             .then(senders => {
-                const senderSelect = document.getElementById("sender");
+                const sendersSelect = document.getElementById("senders");
                 senders.forEach(sender => {
                     const option = document.createElement("option");
                     option.value = sender;
                     option.textContent = sender;
-                    senderSelect.appendChild(option);
+                    sendersSelect.appendChild(option);
                 });
             });
     });
 
     function fetchEmails() {
-        const sender = document.getElementById("sender").value;
+        const selectedSenders = Array.from(document.getElementById("senders").selectedOptions).map(option => option.value);
         fetch("http://127.0.0.1:5000/emails", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({sender: sender})
+            body: JSON.stringify({senders: selectedSenders})
         })
         .then(response => response.json())
         .then(emails => {
@@ -57,8 +57,8 @@
                 const emailDiv = document.createElement("div");
                 emailDiv.className = "p-4 bg-white shadow rounded";
                 emailDiv.innerHTML = `
-                    <h2 class="font-bold text-lg">Email ${index + 1} Subject: ${email.subject}</h2>
-                    <p class="mt-2">${email.body}</p>
+                    <h2 class="font-bold text-lg">Email ${index + 1}: ${email.subject}</h2>
+                    <p class="mt-2">${email.body.replace(/https?:\/\/[^\s]+/g, '<a href="#" class="text-blue-500">click here</a>')}</p>
                 `;
                 emailList.appendChild(emailDiv);
             });
