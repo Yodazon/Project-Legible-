@@ -120,26 +120,21 @@ def get_emails():
         
         for msg in messages:
             msg_detail = service.users().messages().get(userId="me", id=msg['id']).execute()
-            subject = next(header['value'] for header in msg_detail['payload']['headers'] if header['name'] == 'Subject')
-
-
-            # Retrieve the date from the correct header
-            date_str = next(header['value'] for header in msg_detail['payload']['headers'] if header['name'] == 'Date')
-
-            # Clean up the date string by removing '(UTC)' if it exists
-            date_str = date_str.replace(' (UTC)', '')
-
+            headers = {header['name']: header['value'] for header in msg_detail['payload']['headers']}
+            subject = headers.get('Subject', 'No Subject')
+            date_str = headers.get('Date', '')
             body = get_email_body(msg_detail)
-            date = datetime.datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %z')
-            all_emails.append({'subject': subject, 'body': body, 'date': date})
+            
+            try:
+                date = datetime.datetime.strptime(date_str.split('(')[0].strip(), '%a, %d %b %Y %H:%M:%S %z')
+            except ValueError:
+                date = None  # Fallback in case of parsing issues
+            
+            all_emails.append({'subject': subject, 'body': body, 'date': date.isoformat() if date else None})
     
     # Sort emails by date
-    sorted_emails = sorted(all_emails, key=lambda x: x['date'], reverse=True)
+    sorted_emails = sorted(all_emails, key=lambda x: x['date'] or '', reverse=True)
     
-    # Remove date before returning
-    for email in sorted_emails:
-        email.pop('date')
-
     return jsonify(sorted_emails)
 
 
